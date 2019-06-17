@@ -7,7 +7,7 @@ This Postgres module introduces a new data type `hll` which is a [HyperLogLog](h
 
 In addition to the algorithm proposed in the [original paper](http://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf), this implementation is augmented to improve its accuracy and memory use without sacrificing much speed. See below for more details.
 
-This `postgresql-hll` extension was originally developed by the Science team from Aggregate Knowledge, now a part of [Neustar](https://research.neustar.biz). Please see the [acknowledgements](#acknowledgements) section below for details about its contributors. 
+This `postgresql-hll` extension was originally developed by the Science team from Aggregate Knowledge, now a part of [Neustar](https://research.neustar.biz). Please see the [acknowledgements](#acknowledgements) section below for details about its contributors.
 
 Algorithms
 ----------
@@ -376,7 +376,7 @@ Build
 
 Specify versions:
 
-    export VER=2.12
+    export VER=2.13
     export PGSHRT=11
 
 Make sure `Makefile` points to the correct `pg_config` for the specified version, since `rpmbuild` doesn't respect env variables:
@@ -394,11 +394,11 @@ Execute rpmbuild:
 
 Install RPM:
 
-    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-2.12.x86_64.rpm
+    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-2.13.x86_64.rpm
 
 And if you want the debugging build:
 
-    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-debuginfo-2.12.x86_64.rpm
+    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-debuginfo-2.13.x86_64.rpm
 
 
 ## From source ##
@@ -439,7 +439,7 @@ And then just verify it's there:
                             List of installed extensions
           Name   | Version |   Schema   |            Description
         ---------+---------+------------+-----------------------------------
-         hll     | 2.12    | public     | type for storing hyperloglog data
+         hll     | 2.13    | public     | type for storing hyperloglog data
          plpgsql | 1.0     | pg_catalog | PL/pgSQL procedural language
         (2 rows)
 

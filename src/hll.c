@@ -1702,6 +1702,8 @@ multiset_copy_size(multiset_t const * i_msp)
     switch (i_msp->ms_type)
     {
     case MST_EMPTY:
+    case MST_UNDEFINED:
+    case MST_UNINIT:
         retval = __builtin_offsetof(multiset_t, ms_data);
         break;
 
@@ -1718,10 +1720,6 @@ multiset_copy_size(multiset_t const * i_msp)
             retval = __builtin_offsetof(multiset_t, ms_data.as_comp.msc_regs);
             retval += (i_msp->ms_nregs * sizeof(compreg_t));
         }
-        break;
-
-    case MST_UNDEFINED:
-        retval = __builtin_offsetof(multiset_t, ms_data);
         break;
 
     default:
@@ -1917,7 +1915,7 @@ hll(PG_FUNCTION_ARGS)
     // Unpack the bit data.
     multiset_unpack(&ms, (uint8_t *) VARDATA(bp), sz, NULL);
 
-    // Make the compiler happpy.
+    // Make the compiler happy.
     (void) isexplicit;
 
     // Create a placeholder w/ declared metadata.
@@ -3191,6 +3189,70 @@ hll_union_trans(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(msap);
 }
 
+// Union aggregate combinefunc function, both args unpacked.
+//
+// NOTE - This function is not declared STRICT, it is initialized with
+// a NULL ...
+//
+PG_FUNCTION_INFO_V1(hll_union_internal);
+Datum hll_union_internal(PG_FUNCTION_ARGS);
+Datum
+hll_union_internal(PG_FUNCTION_ARGS)
+{
+    MemoryContext aggctx;
+    multiset_t * msap;
+    multiset_t * msbp;
+
+    if (!AggCheckCallContext(fcinfo, &aggctx))
+        ereport(ERROR,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("hll_union_internal "
+                        "outside aggregate context")));
+
+    if (PG_ARGISNULL(0))
+    {
+        if (PG_ARGISNULL(1))
+        {
+            PG_RETURN_POINTER(setup_multiset(aggctx));
+        }
+        else
+        {
+            msap = setup_multiset(aggctx);
+            msbp = (multiset_t *)PG_GETARG_POINTER(1);
+            memcpy(msap, msbp, multiset_copy_size(msbp));
+            PG_RETURN_POINTER(msap);
+        }
+    }
+    else
+    {
+        if (PG_ARGISNULL(1))
+        {
+            PG_RETURN_DATUM(PG_GETARG_DATUM(0));
+        }
+        else
+        {
+            msap = (multiset_t *) PG_GETARG_POINTER(0);
+            msbp = (multiset_t *) PG_GETARG_POINTER(1);
+
+            if (msap->ms_type == MST_UNINIT)
+            {
+                if (msbp->ms_type != MST_UNINIT)
+                {
+                    memcpy(msap, msbp, multiset_copy_size(msbp));
+                }
+                PG_RETURN_POINTER(msap);
+            }
+            if (msbp->ms_type == MST_UNINIT)
+            {
+                PG_RETURN_POINTER(msap);
+            }
+            multiset_union(msap, msbp);
+            PG_RETURN_POINTER(msap);
+        }
+    }
+
+}
+
 // Add aggregate transition function.
 //
 // NOTE - This function is not declared STRICT, it is initialized with
@@ -3710,10 +3772,51 @@ Datum hll_send(PG_FUNCTION_ARGS);
 Datum
 hll_send(PG_FUNCTION_ARGS)
 {
-    Datum dd = PG_GETARG_DATUM(0);
-    bytea* bp = DatumGetByteaP(dd);
+    bytea * bp = PG_GETARG_BYTEA_P(0);
     StringInfoData buf;
     pq_begintypsend(&buf);
     pq_sendbytes(&buf, VARDATA(bp), VARSIZE(bp) - VARHDRSZ);
     PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+}
+
+PG_FUNCTION_INFO_V1(hll_serialize);
+Datum hll_serialize(PG_FUNCTION_ARGS);
+Datum
+hll_serialize(PG_FUNCTION_ARGS)
+{
+    multiset_t * msp;
+    bytea * ret;
+    size_t mspsz;
+
+    if (!AggCheckCallContext(fcinfo, NULL))
+        ereport(ERROR,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("hll_serialize outside transition context")));
+
+    msp = (multiset_t *) PG_GETARG_POINTER(0);
+    mspsz = multiset_copy_size(msp);
+    ret = palloc(VARHDRSZ + mspsz);
+    SET_VARSIZE(ret, VARHDRSZ + mspsz);
+    memcpy(VARDATA(ret), msp, mspsz);
+    PG_RETURN_BYTEA_P(ret);
+}
+
+PG_FUNCTION_INFO_V1(hll_deserialize);
+Datum hll_deserialize(PG_FUNCTION_ARGS);
+Datum
+hll_deserialize(PG_FUNCTION_ARGS)
+{
+    bytea * bp = PG_GETARG_BYTEA_P(0);
+    multiset_t * msp;
+    size_t mspsz;
+
+    if (!AggCheckCallContext(fcinfo, NULL))
+        ereport(ERROR,
+                (errcode(ERRCODE_DATA_EXCEPTION),
+                 errmsg("hll_deserialize outside transition context")));
+
+    msp = palloc(sizeof(multiset_t));
+    mspsz = VARSIZE(bp) - VARHDRSZ;
+    memcpy(msp, VARDATA(bp), mspsz);
+    PG_RETURN_POINTER(msp);
 }
